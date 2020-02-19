@@ -36,6 +36,7 @@ inject_group() {
   jq --arg gid "${gid}" \
     -c '.process.user.additionalGids += [$gid | tonumber]' ${runc_config} \
     | sponge ${runc_config}
+  log "Injected video group id."
 }
 
 inject_device() {
@@ -47,7 +48,7 @@ inject_device() {
 
   major=$((0x$(stat -c %t ${dev})))
   minor=$((0x$(stat -c %T ${dev})))
-  file_mode=$(stat -c %a ${dev})
+  file_mode=$((020$(stat -c %a ${dev})))
   gid=$(stat -c %g ${dev})
   jq --arg dev ${dev} --arg major ${major} --arg minor ${minor} --arg file_mode ${file_mode} --arg gid ${gid} \
     -c '.linux.devices += [{
@@ -67,6 +68,7 @@ inject_device() {
       "minor": $minor | tonumber,
       "access": "rwm"}]' ${runc_config} \
     | sponge ${runc_config}
+  log "Injected device ${dev}."
 }
 
 
@@ -102,8 +104,6 @@ if [ "${cmd}" = "create" ]; then
     *)
       log "${ENV_VISIBLE_DEVICES}=${visible_devices}, start to add AMD GPU."
       patch_runc_config ${runc_config}
-
-      log "Injecting video group id."
       inject_group ${runc_config} "video"
 
       log "Searching AMD GPU devices."
@@ -114,8 +114,8 @@ if [ "${cmd}" = "create" ]; then
       log "Found ${gpu_pci_paths[@]}."
 
       log "Injecting AMD GPU devices."
-      for request in ${gpu_requests}; do
-        if [ "$request" -le ${#gpu_pci_paths[@]} ]; then
+      for request in ${gpu_requests[@]}; do
+        if [ "$request" -lt ${#gpu_pci_paths[@]} ]; then
           devices=($(find ${gpu_pci_paths[$request]}/drm \
             -mindepth 1 -maxdepth 1 -type d -printf "%f\n"))
           log "Found ${devices[@]}."
